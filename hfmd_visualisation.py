@@ -111,79 +111,81 @@ with st.expander("🔎 Data Preview (Monthly)"):
     st.dataframe(df_m.head(), use_container_width=True)
     st.caption(f"Rows: {len(df_m):,} • Years: {df_m['Year'].min()}–{df_m['Year'].max()}")
 
-# ------------------ VIZ 1: Temp vs HFMD (scatter + regression) ------------------
-st.header("1) Temperature vs HFMD Cases (Monthly)")
+# ------------------ VIZ 1: Seasonal Overlay (Monthly Climatology) ------------------
+st.header("1) Seasonal Pattern: HFMD vs Temperature (Monthly Climatology)")
+
+# Monthly climatology (average by month across all years)
+clim = (
+    df_m.groupby("Month", as_index=False)[["total_cases", "temp_c"]]
+        .mean()
+        .rename(columns={"total_cases": "AvgCases", "temp_c": "AvgTempC"})
+)
+
+# Two-line overlay with independent y-axes (HFMD cases vs Temperature)
 st.vega_lite_chart(
-    df_m.rename(columns={"total_cases":"TotalCases", "temp_c":"TempC"}),
+    clim,
     {
-        "transform": [
-            {"regression": "TotalCases", "on": "TempC", "as": ["TempC", "fit"]}
-        ],
         "layer": [
             {
-                "mark": {"type": "point", "filled": True, "opacity": 0.6},
+                "mark": {"type": "line", "point": True},
                 "encoding": {
-                    "x": {"field": "TempC", "type": "quantitative", "title": "Temperature (°C)"},
-                    "y": {"field": "TotalCases", "type": "quantitative", "title": "Total HFMD Cases"},
-                    "tooltip": [
-                        {"field": "Year", "type": "ordinal"},
-                        {"field": "Month", "type": "ordinal"},
-                        {"field": "TempC", "type": "quantitative"},
-                        {"field": "TotalCases", "type": "quantitative"}
-                    ]
+                    "x": {"field": "Month", "type": "ordinal",
+                          "scale": {"domain": list(range(1,13))},
+                          "axis": {"labelExpr": "['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][datum.value-1]"},
+                          "title": "Month"},
+                    "y": {"field": "AvgCases", "type": "quantitative", "title": "HFMD (Avg Monthly Cases)"},
+                    "color": {"value": "#d62728"}
                 }
             },
             {
-                "mark": {"type": "line", "color": "black"},
+                "mark": {"type": "line", "point": True, "strokeDash": [4,3]},
                 "encoding": {
-                    "x": {"field": "TempC", "type": "quantitative"},
-                    "y": {"field": "fit", "type": "quantitative"}
+                    "x": {"field": "Month", "type": "ordinal"},
+                    "y": {"field": "AvgTempC", "type": "quantitative", "title": "Temperature (°C)"},
+                    "color": {"value": "#1f77b4"}
                 }
             }
-        ]
-    },
-    use_container_width=True,
-)
-st.info("**Interpretation:** Positive slope indicates **higher temperatures tend to coincide with higher HFMD cases**.")
-
-st.markdown("---")
-
-# ------------------ VIZ 2: Humidity vs HFMD (scatter + regression) ------------------
-st.header("2) Relative Humidity vs HFMD Cases (Monthly)")
-st.vega_lite_chart(
-    df_m.rename(columns={"total_cases":"TotalCases", "rh_c":"RH"}),
-    {
-        "transform": [
-            {"regression": "TotalCases", "on": "RH", "as": ["RH", "fit"]}
         ],
-        "layer": [
-            {
-                "mark": {"type": "point", "filled": True, "opacity": 0.6},
-                "encoding": {
-                    "x": {"field": "RH", "type": "quantitative", "title": "Relative Humidity (%)"},
-                    "y": {"field": "TotalCases", "type": "quantitative", "title": "Total HFMD Cases"},
-                    "tooltip": [
-                        {"field": "Year", "type": "ordinal"},
-                        {"field": "Month", "type": "ordinal"},
-                        {"field": "RH", "type": "quantitative"},
-                        {"field": "TotalCases", "type": "quantitative"}
-                    ]
-                }
-            },
-            {
-                "mark": {"type": "line", "color": "black"},
-                "encoding": {
-                    "x": {"field": "RH", "type": "quantitative"},
-                    "y": {"field": "fit", "type": "quantitative"}
-                }
-            }
-        ]
+        "resolve": {"scale": {"y": "independent"}},
+        "width": "container",
+        "height": 340
     },
-    use_container_width=True,
+    use_container_width=True
 )
-st.info("**Interpretation:** A moderate positive slope suggests **humid conditions may support HFMD transmission**.")
+st.info("**Interpretation:** Temperature and HFMD **rise in tandem mid-year**, confirming seasonal alignment. Independent axes avoid scale confusion.")
 
 st.markdown("---")
+
+# ------------------ VIZ 2: Temp vs HFMD — Binned Density Heatmap ------------------
+st.header("2) Temperature vs HFMD Cases — Density View")
+
+dense_df = df_m.rename(columns={"total_cases": "TotalCases", "temp_c": "TempC"})
+
+st.vega_lite_chart(
+    dense_df,
+    {
+        "mark": "rect",
+        "encoding": {
+            "x": {"field": "TempC", "type": "quantitative", "bin": {"maxbins": 25}, "title": "Temperature (°C)"},
+            "y": {"field": "TotalCases", "type": "quantitative", "bin": {"maxbins": 25}, "title": "HFMD Cases (Monthly)"},
+            "color": {
+                "aggregate": "count",
+                "type": "quantitative",
+                "title": "Observations",
+                "scale": {"scheme": "blues"}
+            },
+            "tooltip": [
+                {"aggregate": "count", "type": "quantitative", "title": "Count"},
+                {"field": "TempC", "type": "quantitative", "bin": True, "title": "Temp Bin"},
+                {"field": "TotalCases", "type": "quantitative", "bin": True, "title": "Cases Bin"}
+            ]
+        },
+        "width": "container",
+        "height": 340
+    },
+    use_container_width=True
+)
+st.info("**Interpretation:** The densest tiles show where most monthly observations lie; a clear **high-temp / high-cases cluster** indicates positive association.")
 
 # ------------------ VIZ 3: Correlation Heatmap ------------------
 st.header("3) Correlation Matrix: Weather vs HFMD")
