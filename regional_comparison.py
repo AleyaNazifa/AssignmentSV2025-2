@@ -148,36 +148,54 @@ st.markdown("---")
 # ------------------ VIZ 3: Seasonal Pattern by Region (Monthly Climatology, Faceted) ------------------
 st.header("3) Seasonal Pattern by Region (Monthly Climatology)")
 
+# Create climatology dataset (mean per month per region)
 clim_df = (
     melt_box.groupby(["Region","Month"], as_index=False)["Cases"]
-            .mean().rename(columns={"Cases":"AvgMonthlyCases"})
+            .mean()
+            .rename(columns={"Cases":"AvgMonthlyCases"})
 )
+
+# Ensure months are integers 1–12
+clim_df["Month"] = clim_df["Month"].astype(int)
 
 st.vega_lite_chart(
     clim_df,
     {
-        "mark": {"type": "line", "point": True},
-        "encoding": {
-            "x": {
-                "field": "Month", "type": "ordinal", "title": "Month",
-                "scale": {"domain": list(range(1,13))},
-                "axis": {"labelExpr":
-                         "['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][datum.value-1]"}
+        "facet": {"field": "Region", "type": "nominal", "columns": 2},
+        "spec": {
+            "mark": {"type": "line", "point": True, "strokeWidth": 2},
+            "encoding": {
+                "x": {
+                    "field": "Month",
+                    "type": "ordinal",
+                    "scale": {"domain": list(range(1, 13))},
+                    "axis": {
+                        "title": "Month",
+                        "labelExpr": "['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][datum.value-1]"
+                    }
+                },
+                "y": {
+                    "field": "AvgMonthlyCases",
+                    "type": "quantitative",
+                    "title": "Avg Monthly Cases",
+                    "scale": {"zero": False}
+                },
+                "color": {
+                    "field": "Region",
+                    "type": "nominal",
+                    "legend": None
+                },
+                "tooltip": [
+                    {"field": "Region", "type": "nominal"},
+                    {"field": "Month", "type": "ordinal"},
+                    {"field": "AvgMonthlyCases", "type": "quantitative", "format": ".0f"}
+                ]
             },
-            "y": {"field": "AvgMonthlyCases", "type": "quantitative", "title": "HFMD (Avg Monthly Cases)"},
-            "color": {"field": "Region", "type": "nominal"},
-            "tooltip": [
-                {"field": "Region", "type": "nominal"},
-                {"field": "Month", "type": "ordinal"},
-                {"field": "AvgMonthlyCases", "type": "quantitative", "format": ".0f"}
-            ]
         },
-        "facet": {"field": "Region", "type": "nominal", "columns": 2, "title": None},
-        "width": 320,
-        "height": 220,
-        "resolve": {"scale": {"y": "independent"}}
+        "resolve": {"scale": {"y": "independent", "color": "independent"}},
+        "width": 280,
+        "height": 220
     },
     use_container_width=True
 )
-st.info("**Interpretation:** All regions show **mid-year peaks**, but amplitude differs; some regions display sharper, more pronounced surges than others.")
-st.success("✅ Objective 3 complete: 3 metrics + 3 regional visualizations with interpretations.")
+st.info("**Interpretation:** Each facet shows one region’s monthly pattern — all exhibit a **mid-year peak**, but peak intensity varies by region.")
