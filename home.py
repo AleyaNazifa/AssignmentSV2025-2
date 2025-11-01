@@ -1,163 +1,172 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
 import plotly.express as px
+import plotly.graph_objects as go  # for the line chart
 
-st.title("🦠 Objective 1: Temporal & Seasonal Trend of HFMD in Malaysia (2009–2019)")
+# --- 1. Configuration and Data Loading ---
+# If this page is launched directly (not via app.py), keep this.
+# If you run with app.py + st.Page navigation, comment this out to avoid duplicate page_config.
+st.set_page_config(layout="wide", page_title="HFMD Temporal & Seasonal Analysis 📊")
+
+st.title("HFMD Malaysia: Temporal & Seasonal Analysis (2009–2019)")
 st.markdown("---")
 
-# =============== 1) LOAD & CLEAN ===============
-st.subheader("📂 1. Data Loading & Cleaning")
+# URL for the data file (your link)
+url = "https://raw.githubusercontent.com/AleyaNazifa/AssignmentSV2025-1/refs/heads/main/hfdm_data%20-%20Upload.csv"
 
-# Your GitHub raw CSV URL (fallback if user doesn't upload)
-URL_FALLBACK = "https://raw.githubusercontent.com/AleyaNazifa/AssignmentSV2025-1/refs/heads/main/hfdm_data%20-%20Upload.csv"
+# --- Summary Metrics (will be filled after we load & aggregate) ---
+# Temporary placeholders so layout matches your example immediately
+col1, col2, col3, col4 = st.columns(4)
+m1 = col1.metric(label="Avg Monthly Cases", value="—", help="Mean monthly HFMD cases across Malaysia (2009–2019)", border=True)
+m2 = col2.metric(label="Peak Year", value="—", help="Year with the highest average monthly HFMD cases", border=True)
+m3 = col3.metric(label="Seasonal Peak", value="—", help="Months that most often record the highest HFMD activity", border=True)
+m4 = col4.metric(label="Coverage", value="—", help="Temporal coverage of the dataset", border=True)
 
-uploaded = st.file_uploader("Upload your HFMD CSV", type=["csv"])
-
+# --- Cached loader (like your example) ---
 @st.cache_data
-def load_csv(file_or_url):
-    if hasattr(file_or_url, "read"):
-        return pd.read_csv(file_or_url)
-    elif isinstance(file_or_url, str) and file_or_url.strip():
-        return pd.read_csv(file_or_url.strip())
-    return pd.DataFrame()
+def load_data(data_url: str) -> pd.DataFrame:
+    """Loads the data from the URL and caches it to prevent reloading."""
+    try:
+        df = pd.read_csv(data_url)
+        return df
+    except Exception as e:
+        st.error(f"Error loading data: {e}")
+        return pd.DataFrame()  # Return empty on error
 
-# choose source
-df_raw = load_csv(uploaded if uploaded is not None else URL_FALLBACK)
-if df_raw.empty:
-    st.error("⚠️ Dataset is empty or unreadable. Please upload a valid CSV or check the URL.")
+raw_df = load_data(url)
+
+if raw_df.empty:
+    st.error("Data could not be loaded. Please check the URL and file.")
     st.stop()
 
-# Flexible date column
-date_col = None
-for cand in ["Date", "date", "DATE"]:
-    if cand in df_raw.columns:
-        date_col = cand
-        break
-if not date_col:
-    st.error("❌ No 'Date' column found. Please ensure your file has a 'Date' column.")
-    st.stop()
-
-# Standardize names (lowercase, underscores) & parse date
-df = df_raw.copy()
+# --- Light cleaning / normalization (rename to safe lowercase, parse date) ---
+df = raw_df.copy()
 df.columns = [c.strip().lower().replace(" ", "_") for c in df.columns]
-date_col = date_col.lower()
-df[date_col] = pd.to_datetime(df[date_col], errors="coerce")
+
+# Flexible date column detection
+date_col = "date" if "date" in df.columns else None
+if date_col is None:
+    st.error("No 'Date' column found in the CSV. Please ensure a 'Date' column exists.")
+    st.stop()
+
+# Parse date safely (the original CSV uses dd/mm/yyyy)
+df[date_col] = pd.to_datetime(df[date_col], format="%d/%m/%Y", errors="coerce")
 df = df.dropna(subset=[date_col]).sort_values(by=date_col)
 
-# Required region columns
+# Region columns expected from your HFMD file
 region_cols = ["southern", "northern", "central", "east_coast", "borneo"]
-missing = [c for c in region_cols if c not in df.columns]
-if missing:
-    st.error(f"❌ Missing region columns: {missing}")
+missing_regions = [c for c in region_cols if c not in df.columns]
+if missing_regions:
+    st.error(f"Missing region columns: {missing_regions}")
     st.stop()
 
-# Compute total cases, drop dups
+# Total cases across regions
 df["total_cases"] = df[region_cols].sum(axis=1, numeric_only=True)
-df = df.drop_duplicates(subset=[date_col])
 
-# Monthly aggregation (for Objective 1)
-df_monthly = (
+# Monthly aggregation for temporal/seasonal analysis
+df_m = (
     df.set_index(date_col)
       .resample("M")
       .mean(numeric_only=True)
       .reset_index()
       .rename(columns={date_col: "Date"})
 )
-df_monthly["Year"]  = df_monthly["Date"].dt.year
-df_monthly["Month"] = df_monthly["Date"].dt.month
+df_m["Year"] = df_m["Date"].dt.year
+df_m["Month"] = df_m["Date"].dt.month
 
-# Preview
-st.markdown("**Dataset Preview (after cleaning)**")
-st.dataframe(df.head(), use_container_width=True)
-st.caption(f"Daily rows: {len(df):,} · Range: {df['Date'].min().date()} — {df['Date'].max().date()}")
+# --- Fill Summary Metrics with real values ---
+avg_monthly = df_m["total_cases"].mean()
+peak_year = df_m.groupby("Year")["total_cases"].mean().idxmax()
 
-st.markdown("**Monthly aggregation**")
-st.dataframe(df_monthly.head(), use_container_width=True)
-st.caption(f"Monthly rows: {len(df_monthly):,} · Years: {df_monthly['Year'].min()}—{df_monthly['Year'].max()}")
-st.markdown("---")
-
-# =============== 2) SUMMARY BOX ===============
-st.subheader("📊 Summary Box")
-c1, c2, c3, c4 = st.columns(4, gap="large")
-
-avg_monthly = float(df_monthly["total_cases"].mean())
-peak_year = int(df_monthly.groupby("Year")["total_cases"].mean().idxmax())
-
-# top 3 seasonal months by mean
-month_means = df_monthly.groupby("Month")["total_cases"].mean().sort_values(ascending=False)
+month_means = df_m.groupby("Month")["total_cases"].mean().sort_values(ascending=False)
 top_months = month_means.head(3).index.tolist()
 month_names = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
 seasonal_peak = "–".join(month_names[m-1] for m in sorted(top_months)) if top_months else "—"
 
-coverage = f"{df_monthly['Year'].min()}–{df_monthly['Year'].max()}"
+coverage = f"{df_m['Year'].min()}–{df_m['Year'].max()}"
 
-c1.metric("Avg monthly cases", f"{avg_monthly:.0f}",
-          help="Mean HFMD cases per month across all regions.", border=True)
-c1.caption("Mean across months")
+col1.metric(label="Avg Monthly Cases", value=f"{avg_monthly:.0f}",
+            help="Mean monthly HFMD cases across Malaysia (2009–2019)", border=True)
+col2.metric(label="Peak Year", value=f"{int(peak_year)}",
+            help="Year with the highest average monthly HFMD cases", border=True)
+col3.metric(label="Seasonal Peak", value=seasonal_peak,
+            help="Months that most often record the highest HFMD activity", border=True)
+col4.metric(label="Coverage", value=coverage,
+            help="Temporal coverage of the dataset", border=True)
 
-c2.metric("Peak year", f"{peak_year}",
-          help="Year with the highest average monthly HFMD cases.", border=True)
-c2.caption("Highest annual average")
+# --- 1. Data Preview (like your example) ---
+st.header("1. Data Preview")
+st.markdown("Displaying the first few rows of the dataset **after basic cleaning**.")
+st.dataframe(df.head(), use_container_width=True)
+st.markdown("---")
 
-c3.metric("Seasonal peak", seasonal_peak,
-          help="Months that most often recorded the highest HFMD activity.", border=True)
-c3.caption("Typical outbreak window")
+# --- 2. Monthly Trend (Line) ---
+st.header("2. Monthly HFMD Cases Trend")
+try:
+    fig_trend = px.line(
+        df_m,
+        x="Date", y="total_cases",
+        title="Monthly Trend of HFMD Cases (2009–2019)",
+        labels={"Date": "Year", "total_cases": "Average Monthly Cases"},
+        line_shape="spline"
+    )
+    st.plotly_chart(fig_trend, use_container_width=True)
 
-c4.metric("Coverage", coverage,
-          help="Temporal coverage of the dataset used here.", border=True)
-c4.caption("Dataset period")
+    st.info("""
+**Interpretation:** The time series shows **cyclical rises and falls** in HFMD cases with clear **mid-year peaks** in many years, indicating strong seasonality in transmission.
+""")
+except Exception as e:
+    st.warning(f"Could not generate Monthly Trend chart: {e}")
 
 st.markdown("---")
 
-# =============== 3) VISUALIZATIONS (3) ===============
-st.subheader("📈 2. Visualizations")
+# --- 3. Average Yearly Cases (Bar) ---
+st.header("3. Average Yearly HFMD Cases")
+try:
+    yearly_avg = df_m.groupby("Year")["total_cases"].mean().reset_index()
+    fig_year = px.bar(
+        yearly_avg,
+        x="Year", y="total_cases",
+        title="Average Yearly HFMD Cases (2009–2019)",
+        labels={"total_cases": "Average Monthly Cases"},
+        color="total_cases",
+        color_continuous_scale="Reds"
+    )
+    fig_year.update_layout(yaxis_title="Average Monthly Cases", xaxis_title="Year")
+    st.plotly_chart(fig_year, use_container_width=True)
 
-# 1) Line Trend: Monthly total cases
-st.markdown("#### Visualization 1: Monthly HFMD Cases Trend")
-fig1 = px.line(
-    df_monthly,
-    x="Date", y="total_cases",
-    labels={"Date": "Year", "total_cases": "Average Monthly Cases"},
-    title="Monthly Trend of HFMD Cases (2009–2019)",
-    line_shape="spline"
-)
-st.plotly_chart(fig1, use_container_width=True)
-st.caption("The line chart shows cyclical rises and falls in HFMD cases, with visible peaks in certain months each year.")
+    st.info("""
+**Interpretation:** Some years (e.g., the **peak year** above) exhibit **elevated baseline incidence**, useful for longer-term planning and comparison across years.
+""")
+except Exception as e:
+    st.warning(f"Could not generate Average Yearly chart: {e}")
 
-# 2) Bar: Average yearly HFMD cases
-st.markdown("#### Visualization 2: Average Yearly HFMD Cases")
-yearly_avg = df_monthly.groupby("Year")["total_cases"].mean().reset_index()
-fig2 = px.bar(
-    yearly_avg, x="Year", y="total_cases",
-    labels={"total_cases": "Average Monthly Cases"},
-    color="total_cases", color_continuous_scale="Reds",
-    title="Average Yearly HFMD Cases (2009–2019)"
-)
-st.plotly_chart(fig2, use_container_width=True)
-st.caption("Yearly averages highlight which years had higher overall incidence, useful for long-term comparisons.")
+st.markdown("---")
 
-# 3) Heatmap: Seasonal pattern (Month × Year)
-st.markdown("#### Visualization 3: Seasonal Pattern Heatmap (Month × Year)")
-pivot = df_monthly.pivot_table(values="total_cases", index="Month", columns="Year", aggfunc="mean")
-fig3 = px.imshow(
-    pivot, aspect="auto", origin="lower",
-    color_continuous_scale="YlOrRd",
-    labels=dict(x="Year", y="Month", color="Avg Monthly Cases"),
-    title="Seasonal Heatmap of HFMD Cases"
-)
-# nicer y-axis ticks
-fig3.update_yaxes(tickmode="array", tickvals=list(range(1,13)),
-                  ticktext=month_names)
-st.plotly_chart(fig3, use_container_width=True)
-st.caption("The heatmap reveals consistent seasonal surges (often mid-year), and how intensity varies by year.")
+# --- 4. Seasonal Pattern (Month × Year Heatmap) ---
+st.header("4. Seasonal Pattern (Month × Year Heatmap)")
+try:
+    pivot = df_m.pivot_table(values="total_cases", index="Month", columns="Year", aggfunc="mean")
+    fig_heat = px.imshow(
+        pivot,
+        aspect="auto",
+        origin="lower",
+        color_continuous_scale="YlOrRd",
+        labels=dict(x="Year", y="Month", color="Avg Monthly Cases"),
+        title="Seasonal Heatmap of HFMD Cases"
+    )
+    fig_heat.update_yaxes(
+        tickmode="array",
+        tickvals=list(range(1, 13)),
+        ticktext=month_names
+    )
+    st.plotly_chart(fig_heat, use_container_width=True)
 
-# =============== 4) INTERPRETATION ===============
-st.subheader("🧠 3. Interpretation / Discussion")
-st.write(
-    "Across 2009–2019, HFMD shows **recurring seasonal peaks**, typically clustered in **mid-year months**. "
-    "Yearly averages indicate certain years (e.g., the peak year) with elevated incidence. "
-    "These temporal and seasonal patterns support **early-warning planning** and targeted health campaigns "
-    "ahead of the usual outbreak window."
-)
-st.success("✅ Objective 1 complete: data prepared, 3 visuals shown, interpretation provided.")
+    st.info("""
+**Interpretation:** The heatmap confirms **recurrent mid-year surges** across multiple years, with intensity varying year to year.
+""")
+except Exception as e:
+    st.warning(f"Could not generate Seasonal Heatmap: {e}")
+
+st.markdown("---")
+st.success("Analysis complete! All charts and interpretations are now displayed!")
