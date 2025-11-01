@@ -145,57 +145,62 @@ st.vega_lite_chart(
 st.info("**Interpretation:** Regions with **higher medians** and **wider IQR** (box width) show greater typical levels and variability of HFMD incidence.")
 st.markdown("---")
 
-# ------------------ VIZ 3: Seasonal Pattern by Region (Monthly Climatology, Faceted) ------------------
-st.header("3) Seasonal Pattern by Region (Monthly Climatology)")
+# ------------------ VIZ 3: Seasonal Pattern by Region (Multi-Line Chart) ------------------
+st.header("3) Seasonal Pattern by Region (2009–2019)")
 
-# Create climatology dataset (mean per month per region)
+# Average HFMD per month for each region
 clim_df = (
     melt_box.groupby(["Region","Month"], as_index=False)["Cases"]
             .mean()
             .rename(columns={"Cases":"AvgMonthlyCases"})
 )
 
-# Ensure months are integers 1–12
-clim_df["Month"] = clim_df["Month"].astype(int)
+# Month name labels
+month_labels = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+clim_df["MonthName"] = clim_df["Month"].astype(int).map(lambda x: month_labels[x-1])
 
+# --- Modern multi-line style ---
 st.vega_lite_chart(
     clim_df,
     {
-        "facet": {"field": "Region", "type": "nominal", "columns": 2},
-        "spec": {
-            "mark": {"type": "line", "point": True, "strokeWidth": 2},
-            "encoding": {
-                "x": {
-                    "field": "Month",
-                    "type": "ordinal",
-                    "scale": {"domain": list(range(1, 13))},
-                    "axis": {
-                        "title": "Month",
-                        "labelExpr": "['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][datum.value-1]"
-                    }
-                },
-                "y": {
-                    "field": "AvgMonthlyCases",
-                    "type": "quantitative",
-                    "title": "Avg Monthly Cases",
-                    "scale": {"zero": False}
-                },
-                "color": {
-                    "field": "Region",
-                    "type": "nominal",
-                    "legend": None
-                },
-                "tooltip": [
-                    {"field": "Region", "type": "nominal"},
-                    {"field": "Month", "type": "ordinal"},
-                    {"field": "AvgMonthlyCases", "type": "quantitative", "format": ".0f"}
-                ]
+        "mark": {"type": "line", "point": True, "strokeWidth": 3},
+        "encoding": {
+            "x": {
+                "field": "MonthName", "type": "ordinal",
+                "title": "Month", "sort": month_labels,
+                "axis": {"labelAngle": 0}
             },
+            "y": {
+                "field": "AvgMonthlyCases",
+                "type": "quantitative",
+                "title": "Average Monthly HFMD Cases",
+                "scale": {"zero": False}
+            },
+            "color": {
+                "field": "Region",
+                "type": "nominal",
+                "title": "Region",
+                "scale": {"scheme": "set2"}
+            },
+            "tooltip": [
+                {"field": "Region", "type": "nominal"},
+                {"field": "MonthName", "type": "ordinal"},
+                {"field": "AvgMonthlyCases", "type": "quantitative", "format": ".0f"}
+            ]
         },
-        "resolve": {"scale": {"y": "independent", "color": "independent"}},
-        "width": 280,
-        "height": 220
+        "width": "container",
+        "height": 420,
+        "config": {
+            "legend": {"orient": "top", "labelFontSize": 12, "titleFontSize": 13},
+            "axis": {"labelFontSize": 12, "titleFontSize": 13}
+        }
     },
     use_container_width=True
 )
-st.info("**Interpretation:** Each facet shows one region’s monthly pattern — all exhibit a **mid-year peak**, but peak intensity varies by region.")
+
+st.info("""
+**Interpretation:**  
+All regions exhibit a **strong mid-year rise** (May–July).  
+The **Southern and Central** regions show the sharpest increases,  
+while **Borneo** remains relatively stable year-round — suggesting differing local transmission dynamics.
+""")
