@@ -128,4 +128,3 @@ st.vega_lite_chart(
     use_container_width=True
 )
 st.info("**Interpretation:** Heatmap confirms **recurring mid-year surges**; intensity varies year-to-year.")
-st.success("✅ Objective 1 complete: 3 visuals rendered (no external plotting libraries).")
