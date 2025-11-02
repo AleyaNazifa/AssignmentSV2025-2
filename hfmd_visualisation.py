@@ -218,4 +218,3 @@ st.vega_lite_chart(
     use_container_width=True,
 )
 st.info("**Interpretation:** The heatmap summarizes linear relationships; **Temperature** typically shows the strongest association with HFMD, rainfall weaker.")
-st.success("✅ Objective 2 complete: 3 metrics + 3 visualizations with interpretations (no Plotly required).")
